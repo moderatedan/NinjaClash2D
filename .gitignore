@@ -1,0 +1,32 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Backups
+*_backup*.py
+*_backup*.png
+*_backup*.jpg
+*_backup*.wav
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Old preview files (optional - you can remove this if you want to track them)
+preview*.png
+preview*.jpg
+*.webp
+
+# Original raw images (keep only the ones you use)
+waffle_original.png
+waffle_cropped.png
+waffle_stage.png
+kirby*.png
+political*.png
+capitol*.png
