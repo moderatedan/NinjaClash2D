@@ -28,8 +28,10 @@ HORIZONTAL_FORCE = 150
 VERTICAL_DAMAGE_MULTIPLIER = 1.5
 
 CHARACTERS = [
-    {'name': 'Shadow', 'image': 'blue_ninja.png', 'speed': 300, 'power': 1.0, 'health': 100, 'scale': 0.5},
-    {'name': 'Blaze', 'image': 'purple_ninja.png', 'speed': 260, 'power': 1.4, 'health': 90, 'scale': 0.5},
+    {'name': 'Shadow', 'image': 'blue_ninja_right.png', 'speed': 300, 'power': 1.0, 'health': 100, 'scale': 0.5,
+     'punch_image': 'blue_ninja_right_punch.png', 'kick_image': 'blue_ninja_right_kick.png'},
+    {'name': 'Blaze', 'image': 'purple_ninja_right.png', 'speed': 260, 'power': 1.4, 'health': 90, 'scale': 0.5,
+     'punch_image': 'purple_ninja_right_punch.png', 'kick_image': 'purple_ninja_right_kick.png'},
     {'name': 'Slime', 'image': 'slime_buddy.png', 'speed': 180, 'power': 0.8, 'health': 140, 'scale': 0.6},
     {'name': 'Dino', 'image': 'robo_dino.png', 'speed': 220, 'power': 1.8, 'health': 110, 'scale': 0.7},
 ]
@@ -59,6 +61,15 @@ def load_image(filename):
 
 images = {}
 for name in ['background.png', 'blue_ninja.png', 'purple_ninja.png',
+             'blue_ninja_right.png', 'blue_ninja_left.png',
+             'blue_ninja_right_punch.png', 'blue_ninja_right_kick.png',
+             'blue_ninja_right_punch_1.png', 'blue_ninja_right_punch_2.png',
+             'blue_ninja_right_kick_1.png', 'blue_ninja_right_kick_2.png',
+             'blue_ninja_left_punch.png', 'blue_ninja_left_kick.png',
+             'purple_ninja_right.png', 'purple_ninja_left.png',
+             'purple_ninja_right_punch.png', 'purple_ninja_right_kick.png',
+             'purple_ninja_right_punch_1.png', 'purple_ninja_right_punch_2.png',
+             'purple_ninja_right_kick_1.png', 'purple_ninja_right_kick_2.png',
              'slime_buddy.png', 'robo_dino.png',
              'stage_1.jpg', 'stage_2.jpg',
              'battle_arena_bg.png', 'waffles_haus_bg.png']:
@@ -101,6 +112,26 @@ class Fighter(pyglet.sprite.Sprite):
             'punch': {'rotation': 20, 'duration': 0.3, 'damage': 10 * self._pow, 'range': 70, 'forward_move': 50},
             'kick': {'rotation': -15, 'duration': 0.4, 'damage': 15 * self._pow, 'range': 80, 'forward_move': -30},
         }
+        # Per-state sprites (right-facing; we flip scale_x for left)
+        self.idle_image = image
+        self.punch_image = images.get(char_data.get('punch_image', ''))
+        self.kick_image = images.get(char_data.get('kick_image', ''))
+        # 2-frame attack animation: _1 and _2 variants
+        base_punch = char_data.get('punch_image', '').replace('.png', '')
+        base_kick = char_data.get('kick_image', '').replace('.png', '')
+        self.punch_frames = [
+            images.get(f"{base_punch}_1.png"),
+            images.get(f"{base_punch}_2.png"),
+        ]
+        self.kick_frames = [
+            images.get(f"{base_kick}_1.png"),
+            images.get(f"{base_kick}_2.png"),
+        ]
+        # Use frame list if both frames loaded, else fall back to single image
+        self.punch_frames = self.punch_frames if all(self.punch_frames) else None
+        self.kick_frames = self.kick_frames if all(self.kick_frames) else None
+        self.anim_frame = 0
+        self.anim_timer = 0.0
 
     def move_left(self):
         self.velocity_x = -self._spd
@@ -124,14 +155,34 @@ class Fighter(pyglet.sprite.Sprite):
             if jump_sound:
                 jump_sound.play()
 
+    def _set_attack_image(self, spr_image):
+        """Swap to attack sprite, preserving scale/facing."""
+        if spr_image:
+            cur_scale_x = self.scale_x
+            self.image = spr_image
+            self.scale_x = cur_scale_x  # restore facing after image swap resets it
+
+    def _restore_idle_image(self):
+        """Restore idle sprite, preserving scale/facing."""
+        cur_scale_x = self.scale_x
+        self.image = self.idle_image
+        self.scale_x = cur_scale_x
+
     def punch(self):
         if not self.attacking and self.attack_cooldown <= 0:
             self.attacking = True
             self.attack_type = 'punch'
             self.attack_duration = self.attack_states['punch']['duration']
             self.attack_cooldown = 0.5
-            rot = self.attack_states['punch']['rotation']
-            self.rotation = rot if self.face_right else -rot
+            self.anim_frame = 0
+            self.anim_timer = 0.0
+            if self.punch_frames:
+                self._set_attack_image(self.punch_frames[0])
+            elif self.punch_image:
+                self._set_attack_image(self.punch_image)
+            else:
+                rot = self.attack_states['punch']['rotation']
+                self.rotation = rot if self.face_right else -rot
 
     def kick(self):
         if not self.attacking and self.attack_cooldown <= 0:
@@ -139,8 +190,15 @@ class Fighter(pyglet.sprite.Sprite):
             self.attack_type = 'kick'
             self.attack_duration = self.attack_states['kick']['duration']
             self.attack_cooldown = 0.7
-            rot = self.attack_states['kick']['rotation']
-            self.rotation = rot if self.face_right else -rot
+            self.anim_frame = 0
+            self.anim_timer = 0.0
+            if self.kick_frames:
+                self._set_attack_image(self.kick_frames[0])
+            elif self.kick_image:
+                self._set_attack_image(self.kick_image)
+            else:
+                rot = self.attack_states['kick']['rotation']
+                self.rotation = rot if self.face_right else -rot
 
     def check_attack_hit(self, other):
         if not self.attacking or not self.attack_type:
@@ -204,13 +262,24 @@ class Fighter(pyglet.sprite.Sprite):
 
         if self.attacking:
             self.attack_duration -= dt
+            self.anim_timer += dt
             d = 1 if self.face_right else -1
             fm = self.attack_states[self.attack_type]['forward_move']
             self.x += fm * d * dt * 10
+            # Step to frame 2 halfway through the attack
+            frames = self.punch_frames if self.attack_type == 'punch' else self.kick_frames
+            if frames and self.anim_frame == 0:
+                half = self.attack_states[self.attack_type]['duration'] / 2
+                if self.anim_timer >= half:
+                    self.anim_frame = 1
+                    self._set_attack_image(frames[1])
             if self.attack_duration <= 0:
                 self.attacking = False
                 self.rotation = self.original_rotation
+                self._restore_idle_image()
                 self.attack_type = None
+                self.anim_frame = 0
+                self.anim_timer = 0.0
             elif self.check_attack_hit(other):
                 dmg = self.attack_states[self.attack_type]['damage']
                 other.take_damage(dmg)
@@ -440,6 +509,93 @@ background_sprite = None
 health_bar1 = health_bar2 = None
 key_pressed = {}
 
+# ── Joystick support ─────────────────────────────────────────
+import time as _time
+JOY_THRESH = 0.5
+_joysticks = pyglet.input.get_joysticks()
+joy1 = _joysticks[0] if len(_joysticks) > 0 else None
+joy2 = _joysticks[1] if len(_joysticks) > 1 else None
+if joy1:
+    joy1.open()
+    print(f"Joystick 1: {joy1.device.name}")
+if joy2:
+    joy2.open()
+    print(f"Joystick 2: {joy2.device.name}")
+
+joy1_state = {'x': 0.0, 'y': 0.0, 'buttons': [False] * 12}
+joy2_state = {'x': 0.0, 'y': 0.0, 'buttons': [False] * 12}
+_joy_nav_cd = {}
+
+def _nav(player, axis, value):
+    if abs(value) < JOY_THRESH:
+        _joy_nav_cd.pop((player, axis, 'p' if value >= 0 else 'n'), None)
+        return
+    direction = 'p' if value > 0 else 'n'
+    k = (player, axis, direction)
+    now = _time.time()
+    if now - _joy_nav_cd.get(k, 0) < 0.25:
+        return
+    _joy_nav_cd[k] = now
+    cs = char_select
+    if game_state == GameState.CHAR_SELECT:
+        if axis == 'x':
+            delta = 1 if value > 0 else -1
+            if player == 1 and not cs.p1_locked:
+                cs.p1 = (cs.p1 + delta) % len(CHARACTERS)
+            elif player == 2 and not cs.p2_locked:
+                cs.p2 = (cs.p2 + delta) % len(CHARACTERS)
+        elif axis == 'y' and value < -JOY_THRESH:
+            cs.stage = (cs.stage + 1) % len(STAGES)
+
+def _btn_press(player, button):
+    global game_state
+    cs = char_select
+    if game_state == GameState.INTRO:
+        game_state = GameState.CHAR_SELECT
+    elif game_state == GameState.CHAR_SELECT:
+        if player == 1:
+            if button == 0 and not cs.p1_locked:
+                cs.p1_locked = True
+            elif button in (7, 9) and cs.ready:
+                make_fighters(); game_state = GameState.PLAYING
+        elif player == 2:
+            if button == 0 and not cs.p2_locked:
+                cs.p2_locked = True
+            elif button in (7, 9) and cs.ready:
+                make_fighters(); game_state = GameState.PLAYING
+    elif game_state == GameState.GAME_OVER:
+        if button in (0, 7, 9):
+            make_fighters(); game_state = GameState.PLAYING
+
+if joy1:
+    @joy1.event
+    def on_joyaxis_motion(joystick, axis, value):
+        if axis == 'x': joy1_state['x'] = value
+        elif axis == 'y': joy1_state['y'] = value
+        _nav(1, axis, value)
+    @joy1.event
+    def on_joybutton_press(joystick, button):
+        if button < len(joy1_state['buttons']): joy1_state['buttons'][button] = True
+        _btn_press(1, button)
+    @joy1.event
+    def on_joybutton_release(joystick, button):
+        if button < len(joy1_state['buttons']): joy1_state['buttons'][button] = False
+
+if joy2:
+    @joy2.event
+    def on_joyaxis_motion(joystick, axis, value):
+        if axis == 'x': joy2_state['x'] = value
+        elif axis == 'y': joy2_state['y'] = value
+        _nav(2, axis, value)
+    @joy2.event
+    def on_joybutton_press(joystick, button):
+        if button < len(joy2_state['buttons']): joy2_state['buttons'][button] = True
+        _btn_press(2, button)
+    @joy2.event
+    def on_joybutton_release(joystick, button):
+        if button < len(joy2_state['buttons']): joy2_state['buttons'][button] = False
+# ─────────────────────────────────────────────────────────────
+
 def make_fighters():
     global fighter1, fighter2, background_sprite, health_bar1, health_bar2, batch
     batch = pyglet.graphics.Batch()
@@ -519,6 +675,21 @@ def update(dt):
             f.punch()
         if key_pressed.get(c['kick']):
             f.kick()
+
+    # ── Joystick gameplay ──
+    if joy1 and fighter1:
+        if joy1_state['x'] < -JOY_THRESH: fighter1.move_left()
+        elif joy1_state['x'] > JOY_THRESH: fighter1.move_right()
+        if joy1_state['y'] > JOY_THRESH or joy1_state['y'] < -JOY_THRESH: fighter1.jump()
+        if joy1_state['buttons'][0]: fighter1.punch()
+        if joy1_state['buttons'][1]: fighter1.kick()
+    if joy2 and fighter2:
+        if joy2_state['x'] < -JOY_THRESH: fighter2.move_left()
+        elif joy2_state['x'] > JOY_THRESH: fighter2.move_right()
+        if joy2_state['y'] > JOY_THRESH or joy2_state['y'] < -JOY_THRESH: fighter2.jump()
+        if joy2_state['buttons'][0]: fighter2.punch()
+        if joy2_state['buttons'][1]: fighter2.kick()
+    # ──────────────────────
 
     fighter1.update(dt, fighter2)
     fighter2.update(dt, fighter1)
